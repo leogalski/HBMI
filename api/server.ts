@@ -143,6 +143,10 @@ const retrieveLatestLogFiles = () => {
     })
 }
 
+const retrieveLogFileContents = (logFile) => {
+    
+}
+
 // API listener
 app.listen(PORT, () => console.log(`API started on port ${PORT}`))
 
@@ -172,6 +176,14 @@ app.get('/api/getAllLogFiles', (req, res) => {
 });
 //
 app.get('/api/getLatestLogFiles', (req, res) => {
+    retrieveLatestLogFiles().then(function(response){
+        res.status(200).send(
+            response
+        )
+    })
+});
+//
+app.get('/api/getLogFileContents', (req, res) => {
     retrieveLatestLogFiles().then(function(response){
         res.status(200).send(
             response
