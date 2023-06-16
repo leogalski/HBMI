@@ -1,0 +1,313 @@
+#!/bin/sh
+
+backuptype=$1
+
+if [ "$backuptype" != 'daily' -a "$backuptype" != 'weekly' -a "$backuptype" != 'monthly' ]; then
+	tput setaf 1
+	echo "Wrong parameters set!"
+	echo "    Usage: backup <type> <companydbonly>"
+	echo "        <type> = daily, weekly or monthly"
+	echo "        <companydbonly> (optional) = Prevents the system from backing up the whole SAP HANA Database engine"
+	exit
+fi
+
+cd /etc/hbmi
+source ./hbmi.cfg 
+
+companydbonly=FALSE
+case "$*" in
+	(*companydbonly*) companydbonly=TRUE;
+esac
+
+remove=$(($(eval echo "$backuptype")retention+1))
+today=$(date +%Y-%m-%d) 
+backupprefix='HBMIBackup'
+
+if [ "$companydbonly" != 'TRUE' ]; then
+	logfile='/var/log/hbmi/backup_'$backuptype'_'$today'.log'
+	compressedfile=$today'_'$backupprefix'_'$backuptype'.tar.gz'
+fi
+if [ "$companydbonly" == 'TRUE' ]; then
+	logfile='/var/log/hbmi/backup_'$backuptype'_'$today'_dbonly.log'
+	compressedfile=$today'_'$backupprefix'_'$backuptype'_dbonly.tar.gz'
+fi
+####### HANA1v2OK #######
+if [ "$hanaversion" == 1 ]; then
+	dblist=`$hanaclient -U $userstoresystem "SELECT SCHEMA_NAME FROM SCHEMAS WHERE SCHEMA_NAME NOT LIKE '%SYS%' AND SCHEMA_NAME NOT LIKE '%SAP_XS%' AND SCHEMA_NAME NOT LIKE '%SAP_HANA_ADMIN%' AND SCHEMA_NAME NOT LIKE '%HANA_XS_BASE%' AND SCHEMA_NAME NOT LIKE '%UIS%' AND SCHEMA_NAME NOT LIKE '%SAP_REST_API%' AND SCHEMA_NAME NOT LIKE '%B1IF%' AND SCHEMA_NAME NOT LIKE 'RSP' AND SCHEMA_NAME NOT LIKE '%_AUTO_USER_%' AND SCHEMA_NAME NOT LIKE '%_RW' AND SCHEMA_NAME NOT LIKE '%_RO' AND SCHEMA_NAME NOT LIKE '%_DB_USER_%' AND SCHEMA_NAME NOT LIKE 'B1_SBOCOMMON' AND SCHEMA_NAME NOT IN (SELECT CURRENT_USER from dummy) GROUP BY SCHEMA_NAME" | grep '\"' | sed -e 's/^"//' -e 's/"$//'`
+fi
+if [ "$hanaversion" == 2 ]; then
+	dblist=`$hanaclient -U $userstoresboowner "SELECT SCHEMA_NAME FROM SCHEMAS WHERE SCHEMA_NAME NOT LIKE '%SYS%' AND SCHEMA_NAME NOT LIKE '%SAP_XS%' AND SCHEMA_NAME NOT LIKE '%SAP_HANA_ADMIN%' AND SCHEMA_NAME NOT LIKE '%HANA_XS_BASE%' AND SCHEMA_NAME NOT LIKE '%UIS%' AND SCHEMA_NAME NOT LIKE '%SAP_REST_API%' AND SCHEMA_NAME NOT LIKE '%B1IF%' AND SCHEMA_NAME NOT LIKE 'RSP' AND SCHEMA_NAME NOT LIKE '%_AUTO_USER_%' AND SCHEMA_NAME NOT LIKE '%_RW' AND SCHEMA_NAME NOT LIKE '%_RO' AND SCHEMA_NAME NOT LIKE '%_DB_USER_%' AND SCHEMA_NAME NOT LIKE 'B1_SBOCOMMON' AND SCHEMA_NAME NOT IN (SELECT CURRENT_USER from dummy) GROUP BY SCHEMA_NAME" | grep '\"' | sed -e 's/^"//' -e 's/"$//'`
+fi
+####### HANA1v2OK #######
+ 
+logdir=$b1_shf'/HBMIBackupLogs'
+
+####CUSTOM1
+#Custom code
+####CUSTOM1
+
+if [ "$tempdir_iscustom" == 'FALSE' ]; then
+	tempdir='/hana/shared/hbmi/temp'
+fi
+
+if [ "$backuptype" == 'monthly' ] && [ $(date +\%d) -gt 07 ]; then
+	donotrun=TRUE
+else
+	donotrun=FALSE
+fi
+
+if [ "$donotrun" == 'TRUE' ]; then
+	exit
+fi
+
+if [ "$companydbonly" != 'TRUE' ]; then
+	if [ "$backuptype" == 'daily' -a "$stopsbod" == 'TRUE' -o "$backuptype" == 'weekly' -a "$stopsbow" == 'TRUE' -o "$backuptype" == 'monthly' -a "$stopsbom" == 'TRUE' ]; then
+		/etc/init.d/sapb1servertools stop 
+		/etc/init.d/b1s stop 
+	fi
+	if [ "$backuptype" == 'daily' -a "$stophanad" == 'TRUE' -o "$backuptype" == 'weekly' -a "$stophanaw" == 'TRUE' -o "$backuptype" == 'monthly' -a "$stophanam" == 'TRUE' ]; then
+		/usr/sap/${tenant}/SYS/exe/hdb/sapcontrol -prot NI_HTTP -nr 00 -function Stop 400 
+		/usr/sap/${tenant}/SYS/exe/hdb/sapcontrol -prot NI_HTTP -nr 00 -function WaitforStopped 600 2 
+		echo 3 > /proc/sys/vm/drop_caches 
+		/usr/sap/${tenant}/SYS/exe/hdb/sapcontrol -prot NI_HTTP -nr 00 -function StartWait 2700 2 
+	fi
+fi
+
+while true; do
+	if [ -d $tempdir ]; then
+	  rm -rf $tempdir/* >/dev/null 2>&1
+	  break
+	else
+		mkdir $tempdir
+		chown ${tenant,,}adm:sapsys $tempdir
+		chmod 777 $tempdir
+		continue
+	fi
+done
+
+echo '--------------- | HBMI - HANA BACKUP MANAGEMENT INTERFACE' > $logfile
+echo '--------------- | '${backuptype^}' backup ['$today'] starting' >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+
+echo $(date +%T.%6N)' | Starting single schema backup' >> $logfile
+echo $(date +%T.%6N)' | List of schemas which will be backed up:' >> $logfile
+echo $(date +%T.%6N)' | '$dblist >> $logfile
+	for db in $dblist
+	do
+		echo $(date +%T.%6N)' | Starting backup for schema '$db'' >> $logfile
+		mkdir -v $tempdir/$db >> $logfile 2>&1
+		chmod -v 777 $tempdir/$db >> $logfile 2>&1
+		####### HANA1v2OK #######
+		if [ "$hanaversion" == 1 ]; then
+	
+		fi
+		if [ "$hanaversion" == 2 ]; then
+	
+		fi
+		$hanaclient -U ${userstoresboowner} "EXPORT "$db".\"*\" AS BINARY INTO '"$tempdir/$db"' WITH REPLACE THREADS 10;" >> $logfile 2>&1
+		####### HANA1v2OK #######
+		echo $(date +%T.%6N)' | Backup finished for schema '$db'' >> $logfile
+		echo '-------------------------------------------------------------------' >> $logfile
+	done
+
+if [ "$companydbonly" == 'TRUE' ]; then
+	echo $(date +%T.%6N)' | Skipping HANA full data backup (parameter companydbonly supplied)' >> $logfile
+fi
+if [ "$companydbonly" != 'TRUE' ]; then
+	echo $(date +%T.%6N)' | Starting HANA full data backup [Data + Configuration]' >> $logfile
+	echo '-------------------------------------------------------------------' >> $logfile
+
+	####### HANA1v2OK #######
+	if [ "$hanaversion" == 1 ]; then
+		$hanaclient -U ${userstoresystem} "BACKUP DATA USING FILE ('DATABACKUP_${backuptype}_${today}')" >> $logfile 2>&1
+	fi
+	if [ "$hanaversion" == 2 ]; then
+		$hanaclient -U ${userstoresystem} "BACKUP DATA USING FILE ('SYSTEMDB_${backuptype}_${today}')" >> $logfile 2>&1
+		$hanaclient -U ${userstoresystem} "BACKUP DATA FOR ${tenant} USING FILE ('${tenant}_${hanainstance}_${backuptype}_${today}')" >> $logfile 2>&1	
+	fi
+	####### HANA1v2OK #######
+	
+	echo '-------------------------------------------------------------------' >> $logfile
+	echo $(date +%T.%6N)' | Creating directory for full data backup and sending there the files...' >> $logfile
+	echo '-------------------------------------------------------------------' >> $logfile
+		mkdir -v $tempdir/HANA_DATABACKUP/ >> $logfile 2>&1
+		####### HANA1v2OK #######
+		if [ "$hanaversion" == 2 ]; then
+			mkdir -v $tempdir/HANA_DATABACKUP/SYSTEMDB/ >> $logfile 2>&1
+			mkdir -v $tempdir/HANA_DATABACKUP/DB_${tenant} >> $logfile 2>&1
+		fi
+		####### HANA1v2OK #######
+		chmod -Rv 766 $tempdir/HANA_DATABACKUP/ >> $logfile 2>&1
+		####### HANA1v2OK #######
+		if [ "$hanaversion" == 1 ]; then
+			mv -v /usr/sap/${tenant}/HDB${hanainstance}/backup/data/* $tempdir/HANA_DATABACKUP
+		fi
+		if [ "$hanaversion" == 2 ]; then
+			mv -v /usr/sap/${tenant}/HDB${hanainstance}/backup/data/SYSTEMDB/* $tempdir/HANA_DATABACKUP/SYSTEMDB/ >> $logfile 2>&1
+			mv -v /usr/sap/${tenant}/HDB${hanainstance}/backup/data/DB_${tenant}/* $tempdir/HANA_DATABACKUP/DB_${tenant}/ >> $logfile 2>&1
+		fi
+		####### HANA1v2OK #######
+fi
+
+echo '-------------------------------------------------------------------' >> $logfile
+echo $(date +%T.%6N)' | Creating directory for SAP Business One license file and sending it...' >> $logfile	
+	mkdir -v $tempdir/SBO_LICENSE/ >> $logfile 2>&1
+	chmod -v 766 $tempdir/SBO_LICENSE/ >> $logfile 2>&1
+	cp -rpv $b1_shf/../ServerTools/License/webapps/lib/B1Upf.xml $tempdir/SBO_LICENSE/ >> $logfile 2>&1
+	
+echo '-------------------------------------------------------------------' >> $logfile
+echo $(date +%T.%6N)' | Compressing backup files...' >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+	cd $tempdir
+	tar --exclude='*.log' -zcf $compressedfile * >> $logfile 2>&1
+echo '-------------------------------------------------------------------' >> $logfile
+
+####CUSTOM2
+#Custom code
+####CUSTOM2
+
+if [ "$sharedfolder" == 'TRUE' ]; then
+	if [ $(ls $targetdir |grep $backupprefix |awk '{print $1}' |sed -n '1p') == '' ]; then
+		echo $(date +%T.%6N)' | Found backup files that were not sent to the shared resource!' >> $logfile
+		echo $(date +%T.%6N)' | Deleting those files to prevent disk space issues...' >> $logfile
+		echo '-------------------------------------------------------------------' >> $logfile
+		rm -fv $targetdir/$(ls $targetdir |grep $backupprefix |awk '{print $1}' |sed -n '1p')
+	fi
+	echo $(date +%T.%6N)' | Mounting backup partition...' >> $logfile
+	echo '-------------------------------------------------------------------' >> $logfile 
+		mount -t cifs $sharedfolder_isexternal $targetdir -o username=${sharedfolder_user},password=${compartido_contrasena} -v >> $logfile 2>&1
+	echo '-------------------------------------------------------------------' >> $logfile
+fi
+
+echo $(date +%T.%6N)' | Moving backup file...' >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+	cp -v $tempdir/$compressedfile $targetdir/ >> $logfile 2>&1
+echo '-------------------------------------------------------------------' >> $logfile
+
+echo $(date +%T.%6N)' | Checking backup file integrity...' >> $logfile
+if ! tar xOfz $targetdir/$compressedfile &> /dev/null; then
+	echo $(date +%T.%6N)' | Integrity error on file '$targetdir'/'$compressedfile >> $logfile
+	mv $targetdir/$compressedfile $targetdir/$compressedfile'_Corrupt'
+else
+	echo $(date +%T.%6N)' | No integrity issues found!' >> $logfile
+fi
+
+echo $(date +%T.%6N)' | Deleting original files which are now compressed...' >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+	if [ "$companydbonly" != 'TRUE' ]; then
+		rm -rf $tempdir/HANA_DATABACKUP >> $logfile 2>&1
+	fi
+	rm -rf $tempdir/SBO_LICENSE >> $logfile 2>&1
+	for db in $dblist
+	do
+		rm -rf $tempdir/$db >> $logfile 2>&1
+	done
+	rm -f $tempdir/$compressedfile >> $logfile 2>&1
+
+echo $(date +%T.%6N)' | Deleting old backup files...' >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+	while [[ $(find $targetdir/*_$backuptype*.tar.gz | sed -n ''$remove'p') ]]; do
+		rm -rfv $(find $targetdir/*_$backuptype*.tar.gz | sed -n '1p') >> $logfile 2>&1
+	done
+echo '-------------------------------------------------------------------' >> $logfile
+
+if [ "$backuptype" == 'daily' -a "$cleanlogsd" == 'TRUE' -o "$backuptype" == 'weekly' -a "$cleanlogsw" == 'TRUE' -o "$backuptype" == 'monthly' -a "$cleanlogsm" == 'TRUE'  ]; then
+	echo $(date +%T.%6N)' | Deleting HANA catalog files from disk...' >> $logfile
+	echo '-------------------------------------------------------------------' >> $logfile
+	####### HANA1v2OK #######
+	if [ "$hanaversion" == 1 ]; then
+		last_databackup=`$hanaclient -U ${userstoresystem} "SELECT TOP 1 \"BACKUP_ID\" FROM SYS.M_BACKUP_CATALOG WHERE \"ENTRY_TYPE_NAME\" = 'complete data backup' ORDER BY \"BACKUP_ID\" DESC" | sed -n '2p' | awk '{print $1}'`
+		$hanaclient -U ${userstoresystem} "BACKUP CATALOG DELETE ALL BEFORE BACKUP_ID ${last_databackup_sys} WITH FILE" >> $logfile 2>&1
+	fi
+	if [ "$hanaversion" == 2 ]; then
+		last_databackup_sys=`$hanaclient -U ${userstoresystem} "SELECT TOP 1 \"BACKUP_ID\" FROM SYS.M_BACKUP_CATALOG WHERE \"ENTRY_TYPE_NAME\" = 'complete data backup' ORDER BY \"BACKUP_ID\" DESC" | sed -n '2p' | awk '{print $1}'`
+		last_databackup_tenant=`$hanaclient -U ${userstoresystemtenant} "SELECT TOP 1 \"BACKUP_ID\" FROM SYS.M_BACKUP_CATALOG WHERE \"ENTRY_TYPE_NAME\" = 'complete data backup' ORDER BY \"BACKUP_ID\" DESC" | sed -n '2p' | awk '{print $1}'`
+		$hanaclient -U ${userstoresystem} "BACKUP CATALOG DELETE ALL BEFORE BACKUP_ID ${last_databackup_sys} WITH FILE" >> $logfile 2>&1
+		$hanaclient -U ${userstoresystem} "BACKUP CATALOG DELETE FOR ${tenant} ALL BEFORE BACKUP_ID ${last_databackup_tenant} WITH FILE" >> $logfile 2>&1
+	fi
+	####### HANA1v2OK #######
+	echo '-------------------------------------------------------------------' >> $logfile
+fi
+
+if [ "$backuptype" == 'daily' -a "$stopsbod" == 'TRUE' -o "$backuptype" == 'weekly' -a "$stopsbow" == 'TRUE' -o "$backuptype" == 'monthly' -a "$stopsbom" == 'TRUE'  ]; then
+	/usr/sap/${tenant}/SYS/exe/hdb/sapcontrol -prot NI_HTTP -nr 00 -function Stop 400 
+	/usr/sap/${tenant}/SYS/exe/hdb/sapcontrol -prot NI_HTTP -nr 00 -function WaitforStopped 600 2 
+	echo 3 > /proc/sys/vm/drop_caches 
+	/usr/sap/${tenant}/SYS/exe/hdb/sapcontrol -prot NI_HTTP -nr 00 -function StartWait 2700 2 
+fi
+
+if [ "$backuptype" == 'daily' -a "$stophanad" == 'TRUE' -o "$backuptype" == 'weekly' -a "$stophanaw" == 'TRUE' -o "$backuptype" == 'monthly' -a "$stophanam" == 'TRUE'  ]; then
+	/etc/init.d/sapb1servertools start 
+	/etc/init.d/b1s start 
+fi
+
+echo $(date +%T.%6N)' | Backup finished!' >> $logfile
+echo $(date +%T.%6N)' | Disk space after backup:' >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+	df -h >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+echo $(date +%T.%6N)' | Files on destination directory after the backup:' >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+	ls -goh $targetdir/ >> $logfile
+echo '-------------------------------------------------------------------' >> $logfile
+
+if [ "$companydbonly" != 'TRUE' ]; then
+	if [[ "$(find $targetdir -iname $compressedfile -size +2G)" != '' ]]; then
+		backup_ok=TRUE
+	else
+		backup_ok=FALSE
+	fi
+fi
+if [ "$companydbonly" == 'TRUE' ]; then
+	echo 3 > /proc/sys/vm/drop_caches 
+	if [[ "$(find $targetdir -iname $compressedfile -size +50M)" != '' ]]; then
+		backup_ok=TRUE
+	else
+		backup_ok=FALSE
+	fi
+fi
+
+if [ "$sharedfolder" == 'TRUE' ]; then
+	echo $(date +%T.%6N)' | Unmounting shared resource' >> $logfile
+	echo '-------------------------------------------------------------------' >> $logfile
+	umount $targetdir/ -v >> $logfile 2>&1
+	echo '-------------------------------------------------------------------' >> $logfile
+fi
+
+if [[ "$backup_ok" == 'TRUE' ]]; then 
+	echo '--------------- | BACKUP STATUS: Success' >> $logfile
+else
+	echo '--------------- | BACKUP STATUS: Failure' >> $logfile
+fi
+
+echo '--------------- | Goodbye!' >> $logfile
+	
+while true; do
+	if [ -d $logdir ]; then
+	  cp $logfile $logdir
+	  break
+	else
+		mkdir $logdir
+		chmod 777 $logdir
+	fi
+done
+
+sleep 3
+if [[ "$backup_ok" == 'TRUE' ]]; then 
+	m_subject='['$systemdescription'] '${backuptype^}' backup ('$today') completed | Status: SUCCESS'
+else
+    m_subject='['$systemdescription'] '${backuptype^}' backup ('$today') completed | Status: FAILURE'
+fi
+m_body='You can find the backup log attached to this e-mail.'
+m_from=$m_emailaddress' (HBMI - HANA Backup Management Interface)'
+if [[ "$m_ssl" == 'TRUE' ]]; then
+	echo "$m_body" | mailx -v -a "$logfile" -r "$m_from" -s "$m_subject" -S smtp="$m_smtp":"$m_port" -S smtp-use-starttls -S smtp-auth=login -S smtp-auth-user="$m_user" -S smtp-auth-password="$m_pass" -S ssl-verify=ignore "$m_to" 
+else
+	echo "$m_body" | mailx -v -a "$logfile" -r "$m_from" -s "$m_subject" -S smtp="$m_smtp":"$m_port" -S smtp-auth=login -S smtp-auth-user="$m_user" -S smtp-auth-password="$m_pass" -S ssl-verify=ignore "$m_to" 
+fi
+
+####CUSTOM3
+#Custom code
+####CUSTOM3
+
+# THE END

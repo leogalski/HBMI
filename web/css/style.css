@@ -1,0 +1,66 @@
+html {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: rgb(220, 225, 238);
+}
+h1 {
+    font-family: 'Luminari', fantasy;
+    text-align: center;
+}
+#app {
+    margin-top: 15px;
+}
+.diskSpaceBar {
+    width: 200px;
+    height: 20px;
+    background-color: lightgreen;
+}
+.diskSpaceBarUsed {
+    height: 20px;
+    background-color: lightcoral; 
+    position: absolute;
+}   
+.tooltip {
+    width: 150px;
+    height: 75px;
+    display: none; 
+    background-color: black;
+    color: white;   
+    position: relative;
+    z-index: 1;
+}
+.diskSpaceBar:hover .tooltip {
+    display: block;
+    border-radius: 5px;
+    font-size: 90%;
+}
+.diskSpaceBar:hover .diskSpaceBarUsed {
+    display: none;
+}
+table {
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 20px;
+    border: 10px solid transparent;
+    border-radius: 5px;
+    background-color: whitesmoke;
+}
+th, td {
+    border: 1px solid;
+    border-radius: 2px;
+    font-size: 90%;
+}
+#latestLogFilesDiv {
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 20px;
+    text-align: center;
+    border: 10px solid transparent;
+    background-color: whitesmoke;
+    font-size: 75%;
+    display: table;
+    border-radius: 5px;
+}
+.latestLogsSubDiv {
+    float: left;
+    width: 33.33%;
+}
