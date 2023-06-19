@@ -10,7 +10,7 @@ app.use(cors({ origin: 'http://127.0.0.1:3000' }));
 var PORT = 8080;
 var LOGDIR = 'log/';
 // Retrieve latest log file from directory
-var fetchLatestLogFile = function () {
+var retrieveLatestLogFile = function () {
     var fileDates = [];
     var logFile;
     // Sort all files alphabetically, reverse it, and [0] will be the latest date
@@ -27,7 +27,7 @@ var fetchLatestLogFile = function () {
     // ...and return it
     return fs.readFileSync("".concat(LOGDIR).concat(logFile), 'utf8');
 };
-var latestLogFile = fetchLatestLogFile();
+var latestLogFile = retrieveLatestLogFile();
 // Retrieve list of companies (databases) - Returns an ARRAY
 var retrieveCompanies = function () {
     var latestLog = latestLogFile.split(/\r?\n/);
@@ -134,6 +134,11 @@ var retrieveLatestLogFiles = function () {
         resolve(latestLogFiles);
     });
 };
+var retrieveLogFileContents = function (logFile) {
+    return new Promise(function (resolve, reject) {
+        resolve(fs.readFileSync("".concat(LOGDIR).concat(logFile), 'utf8'));
+    });
+};
 // API listener
 app.listen(PORT, function () { return console.log("API started on port ".concat(PORT)); });
 // URIs for each information retrieval
@@ -157,6 +162,13 @@ app.get('/api/getAllLogFiles', function (req, res) {
 //
 app.get('/api/getLatestLogFiles', function (req, res) {
     retrieveLatestLogFiles().then(function (response) {
+        res.status(200).send(response);
+    });
+});
+//
+app.get('/api/getLogFileContents', function (req, res) {
+    var logFile = req.query.logFile;
+    retrieveLogFileContents(logFile).then(function (response) {
         res.status(200).send(response);
     });
 });
