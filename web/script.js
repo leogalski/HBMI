@@ -43,7 +43,22 @@ fetch('http://localhost:8080/api/getLatestLogFiles')
         console.log(`${fileType}LogsDiv`);
         div.innerHTML += `<h4> Latest ${fileType.logType} SAP HANA backup logs</h4>`
         fileType.logFiles.forEach(function(logFile) {
-            div.innerHTML += `${logFile}<br>`;
+            div.innerHTML += `
+            <a href = '#' onclick = "showLogFileContents('${logFile}')">
+            ${logFile}</a><br>`;
         })
     })
 })
+
+const showLogFileContents = (logFile) => {
+    response = fetch(`http://localhost:8080/api/getLogFileContents?logFile=${logFile}`)
+    .then(response => response.text())
+    .then(logContents => { 
+        document.getElementById('logFileContents').innerHTML = logContents;
+        document.getElementById('logFileContentsDiv').style.display = 'block';
+    });
+}
+
+const hideLogFileContents = () => {
+    document.getElementById('logFileContentsDiv').style.display = 'none';
+}

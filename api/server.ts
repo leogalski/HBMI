@@ -1,5 +1,6 @@
 // Frameworks
 const app = require('express')();
+import { log } from 'console';
 import * as fs from 'fs';
 
 // Allow local http requests for testing
@@ -11,7 +12,7 @@ const PORT = 8080;
 const LOGDIR = 'log/';
 
 // Retrieve latest log file from directory
-const fetchLatestLogFile = () => {
+const retrieveLatestLogFile = () => {
     let fileDates = [];
     let logFile;
 
@@ -31,7 +32,7 @@ const fetchLatestLogFile = () => {
     // ...and return it
     return fs.readFileSync(`${LOGDIR}${logFile}`, 'utf8');
 }
-var latestLogFile = fetchLatestLogFile();
+var latestLogFile = retrieveLatestLogFile();
 
 // Retrieve list of companies (databases) - Returns an ARRAY
 const retrieveCompanies = () => {
@@ -144,7 +145,9 @@ const retrieveLatestLogFiles = () => {
 }
 
 const retrieveLogFileContents = (logFile) => {
-    
+    return new Promise((resolve, reject) => {
+        resolve (fs.readFileSync(`${LOGDIR}${logFile}`, 'utf8'));
+    })
 }
 
 // API listener
@@ -184,7 +187,8 @@ app.get('/api/getLatestLogFiles', (req, res) => {
 });
 //
 app.get('/api/getLogFileContents', (req, res) => {
-    retrieveLatestLogFiles().then(function(response){
+    let logFile = req.query.logFile;
+    retrieveLogFileContents(logFile).then(function(response){
         res.status(200).send(
             response
         )

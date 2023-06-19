@@ -23,6 +23,15 @@
         <div id = 'monthlyLogsDiv' class = 'latestLogsSubDiv'></div>
     </div>
 
+    <div id = 'logFileContentsDiv'>
+        <button id = 'hideLogFileContentsButton' onclick = 'hideLogFileContents()'>
+            Hide Log File Contents
+        </button>
+        <h2>Log file contents:</h2>
+        <a id = 'logFileContents'></a>
+        <br>
+    </div>
+
     <div id = 'app'>
         {{ message }}
         <br>
